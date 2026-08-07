@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "endstone-mod-menu"
+version = "1.5.2"
+description = "Mod menu plugin for Endstone with teleportation, fill commands, and gamemode switching"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+keywords = ["endstone", "minecraft", "plugin", "mod-menu"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "endstone>=0.11.8,<0.12",
+]
+
+[project.entry-points."endstone"]
+mod-menu = "endstone_mod_menu.mod_menu:ModMenuPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
