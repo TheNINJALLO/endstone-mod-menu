@@ -20,8 +20,9 @@
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> &bull;
-  <a href="#compatibility">Compatibility</a> &bull;
+  <a href="#what-it-does">What it does</a> &bull;
+  <a href="#how-to-use">How to use</a> &bull;
+  <a href="#commands-and-permissions">Commands</a> &bull;
   <a href="#install">Install</a> &bull;
   <a href="https://github.com/TheNINJALLO/endstone-mod-menu/releases">Releases</a>
 </p>
@@ -30,9 +31,26 @@
 
 Mod menu plugin for Endstone with teleportation, fill commands, and gamemode switching. This release is aligned with Endstone 0.11.8 and Minecraft Bedrock Dedicated Server 1.26.40, and is distributed as a Python wheel for direct installation in an Endstone server.
 
-## Capabilities
+## What it does
 
--
+- Provides form-based moderator and administrator menus for teleportation, fills, gamemode changes, and common staff actions.
+- Separates access through the `Mod` and `Admin` scoreboard tags.
+- Records administrative actions and exposes a browsable operator log.
+
+## How to use
+
+1. Grant menu access with `/tag <player> add Mod` or `/tag <player> add Admin`.
+2. The player runs `/mod` or `/admin` and chooses an action from the form.
+3. Operators can review recent actions with `/adminlog` and its optional count or administrator filter.
+4. Remove the corresponding scoreboard tag immediately when staff access is revoked.
+
+## Commands and permissions
+
+| Command / usage | What it does | Access |
+|---|---|---|
+| `/mod` | Open the mod menu | Scoreboard tag `Mod` |
+| `/admin` | Open the admin menu | Scoreboard tag `Admin` |
+| `/adminlog`<br>`/adminlog <count>`<br>`/adminlog <admin_name>` | View admin action logs (operators only) | Operator |
 
 ## Compatibility
 
