@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "endstone-mod-menu"
-version = "1.5.3"
+version = "1.5.6"
 description = "Mod menu plugin for Endstone with teleportation, fill commands, and gamemode switching"
 readme = "README.md"
 requires-python = ">=3.10"

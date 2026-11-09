@@ -6,10 +6,13 @@ from endstone.plugin import Plugin
 from endstone.command import Command, CommandSender
 from endstone.form import ActionForm, ModalForm, TextInput, Dropdown
 from endstone import Player, GameMode
+from endstone.event import ActorSpawnEvent, PlayerDropItemEvent, EventPriority, event_handler
+
+from .gamemode_guard import GameModeLeadGuard
 
 # Config constants
 FILL_VOLUME_LIMIT = 32768
-NV_DURATION_TICKS = 999999  # ~13.9 hours
+NV_DURATION_TICKS = 999999  # Legacy name: /effect expects seconds.
 NV_SHOW_PARTICLES = False
 
 # Blocked items - these cannot be given by admins
@@ -97,6 +100,7 @@ class ModMenuPlugin(Plugin):
     def on_enable(self) -> None:
         """Called when the plugin is enabled"""
         self.logger.info("Mod Menu Plugin enabled!")
+        self._gamemode_guard = GameModeLeadGuard(self.logger)
         self.register_events(self)
         
         # Admin state tracking
@@ -208,7 +212,60 @@ class ModMenuPlugin(Plugin):
 
     def on_disable(self) -> None:
         """Called when the plugin is disabled"""
+        if hasattr(self, "_gamemode_guard"):
+            self._gamemode_guard.clear()
         self.logger.info("Mod Menu Plugin disabled!")
+
+    @event_handler(priority=EventPriority.MONITOR, ignore_cancelled=True)
+    def on_mode_switch_item_spawn(self, event: ActorSpawnEvent):
+        self._gamemode_guard.observe_spawn(event.actor)
+
+    @event_handler(priority=EventPriority.MONITOR)
+    def on_mode_switch_inventory_drop(self, event: PlayerDropItemEvent):
+        # Observe even cancelled drops, but never cancel or restore items here.
+        self._gamemode_guard.observe_inventory_drop(event.player, event.item)
+
+    def _change_game_mode(self, player: Player, mode: GameMode) -> bool:
+        previous = self._gamemode_guard.recent.get(int(player.id))
+        try:
+            changed = self._gamemode_guard.change(player, mode)
+        finally:
+            entry = self._gamemode_guard.recent.get(int(player.id))
+            if entry is not None and entry is not previous:
+                try:
+                    self._sample_mode_equipment(player, entry)
+                except Exception as error:
+                    self.logger.warning(f"Could not start mode-switch diagnostics: {error}")
+                    self._gamemode_guard.finish(entry, "schedule_failed")
+        if not changed:
+            player.send_message("§cGame mode change was blocked. Your current mode was kept.")
+            return False
+        return True
+
+    def _sample_mode_equipment(self, player: Player, entry) -> None:
+        # Timers retain identity strings and copied data, never a native Player.
+        name, unique_id = player.name, str(player.unique_id)
+
+        def sample(final):
+            if self._gamemode_guard.recent.get(entry.player_id) is not entry:
+                return
+            try:
+                current = self.server.get_player(name)
+            except Exception as error:
+                self.logger.warning(f"Could not find player for mode-switch diagnostics: {error}")
+                self._gamemode_guard.finish(entry, "player_lookup_failed")
+                return
+            if current is None or int(current.id) != entry.player_id or str(current.unique_id) != unique_id:
+                self._gamemode_guard.finish(entry, "player_left")
+                return
+            self._gamemode_guard.sample(current, entry, final=final)
+
+        try:
+            for delay in (5, 10, 20):
+                self.server.scheduler.run_task(self, lambda final=delay == 20: sample(final), delay=delay)
+        except Exception as error:
+            self.logger.warning(f"Could not schedule mode-switch diagnostics for {name}: {error}")
+            self._gamemode_guard.finish(entry, "schedule_failed")
 
     def _get_visible_players(self, requesting_player: Player, exclude_self: bool = True) -> list:
         """Get list of players visible to the requesting player.
@@ -711,26 +768,31 @@ class ModMenuPlugin(Plugin):
         try:
             # Execute effect command as server console to avoid permission issues
             console_sender = self.server.command_sender
-            command = f'effect "{player.name}" clear'
+            # Preserve effects supplied by enchanted gear and other plugins.
+            command = f'effect "{player.name}" clear night_vision'
             self.server.dispatch_command(console_sender, command)
         except Exception:
             pass
 
-    def switch_to_spectator_with_nv(self, player: Player) -> None:
+    def switch_to_spectator_with_nv(self, player: Player) -> bool:
         """Switch to spectator mode and apply night vision"""
         try:
-            player.game_mode = GameMode.SPECTATOR
+            if not self._change_game_mode(player, GameMode.SPECTATOR):
+                return False
             self.give_night_vision(player)
             player.send_message("§7Set gamemode to §eSpectator §7(+ Night Vision).")
             self.log_admin_action(player.name, "MOD_SPECTATOR", player.name)
+            return True
         except Exception as e:
             self.logger.warning(f"gamemode spectator failed: {e}")
             player.send_message("§cFailed to set Spectator. Check permissions.")
+            return False
 
     def switch_to_survival_clear_nv(self, player: Player) -> None:
         """Switch to survival mode and clear night vision"""
         try:
-            player.game_mode = GameMode.SURVIVAL
+            if not self._change_game_mode(player, GameMode.SURVIVAL):
+                return
             self.clear_night_vision(player)
             player.send_message("§7Set gamemode to §aSurvival §7(Night Vision cleared).")
             self.log_admin_action(player.name, "MOD_SURVIVAL", player.name)
@@ -1158,7 +1220,8 @@ class ModMenuPlugin(Plugin):
                         target = filtered_players[selected_index]
 
                         # Switch to spectator + NV first
-                        self.switch_to_spectator_with_nv(p)
+                        if not self.switch_to_spectator_with_nv(p):
+                            return
 
                         # Teleport after brief delay
                         def do_teleport():
@@ -1673,17 +1736,20 @@ class ModMenuPlugin(Plugin):
             elif selection == 2:  # Fly Mode
                 self.toggle_fly(p)
             elif selection == 3:  # Survival Mode
-                p.game_mode = GameMode.SURVIVAL
+                if not self._change_game_mode(p, GameMode.SURVIVAL):
+                    return
                 self.clear_night_vision(p)
                 p.send_message("§7Game mode set to §aSurvival")
                 self.log_admin_action(p.name, "GAMEMODE_SURVIVAL", p.name)
             elif selection == 4:  # Creative Mode
-                p.game_mode = GameMode.CREATIVE
+                if not self._change_game_mode(p, GameMode.CREATIVE):
+                    return
                 self.clear_night_vision(p)
                 p.send_message("§7Game mode set to §eCreative")
                 self.log_admin_action(p.name, "GAMEMODE_CREATIVE", p.name)
             elif selection == 5:  # Spectator Mode
-                self.switch_to_spectator_with_nv(p)
+                if not self.switch_to_spectator_with_nv(p):
+                    return
                 self.log_admin_action(p.name, "GAMEMODE_SPECTATOR", p.name)
 
         form = ActionForm(

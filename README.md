@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <img alt="Endstone 0.11.14" src="https://img.shields.io/badge/Endstone-0.11.14-52b7a8?style=flat-square">
+  <img alt="Endstone 0.11.15" src="https://img.shields.io/badge/Endstone-0.11.15-52b7a8?style=flat-square">
   <img alt="API 0.11" src="https://img.shields.io/badge/API-0.11-63b8ff?style=flat-square">
-  <img alt="BDS 1.26.52.3" src="https://img.shields.io/badge/BDS-1.26.52.3-8b7dff?style=flat-square">
-  <img alt="Python >=3.11" src="https://img.shields.io/badge/Python-%3E=3.11-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white">
+  <img alt="BDS 1.26.60.6" src="https://img.shields.io/badge/BDS-1.26.60.6-8b7dff?style=flat-square">
+  <img alt="Python >=3.10" src="https://img.shields.io/badge/Python-%3E=3.10-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white">
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 ## Overview
 
-Mod menu plugin for Endstone with teleportation, fill commands, and gamemode switching. This release is aligned with Endstone 0.11.14 and Minecraft Bedrock Dedicated Server 1.26.52.3, and is distributed as a Python wheel for direct installation in an Endstone server.
+Mod menu plugin for Endstone with teleportation, fill commands, and gamemode switching. This release is aligned with Endstone 0.11.15 and Minecraft Bedrock Dedicated Server 1.26.60.6, and is distributed as a Python wheel for direct installation in an Endstone server.
 
 ## What it does
 
@@ -56,24 +56,24 @@ Mod menu plugin for Endstone with teleportation, fill commands, and gamemode swi
 
 | Component | Supported version |
 |---|---|
-| Endstone | `0.11.14` |
+| Endstone | `0.11.15` |
 | Endstone API | `0.11` |
-| Bedrock Dedicated Server | `1.26.52.3` |
-| Python | `>=3.11` |
-| Plugin release | `v1.5.3` |
+| Bedrock Dedicated Server | `1.26.60.6` |
+| Python package minimum | `>=3.10` (CI uses `3.11`) |
+| Plugin release | `v1.5.6` |
 
 ## Install
 
 Download the wheel from the matching GitHub release:
 
 ```bash
-gh release download v1.5.3 --repo TheNINJALLO/endstone-mod-menu --pattern "*.whl"
+gh release download v1.5.6 --repo TheNINJALLO/endstone-mod-menu --pattern "*.whl"
 ```
 
 Copy the downloaded wheel into the server's `plugins/` directory, remove any older wheel for the same plugin, and restart Endstone.
 
 > [!IMPORTANT]
-> Use Endstone `0.11.14` with BDS `1.26.52.3`. Back up worlds and plugin data before upgrading a production server.
+> Use Endstone `0.11.15` with BDS `1.26.60.6`. Back up worlds and plugin data before upgrading a production server.
 
 ## Configuration and secrets
 
@@ -81,12 +81,31 @@ Runtime databases, logs, local `.env` files, server directories, and root `confi
 
 ## Release automation
 
-Every `v*` tag runs [the wheel release workflow](.github/workflows/wheel-release.yml), builds the package in a clean GitHub runner, stores the wheel as a workflow artifact, and attaches it to the matching GitHub release.
+A new package version on `main`, or a matching `v*` tag, runs [the release workflow](.github/workflows/wheel-release.yml). It checks the mode/effect/diagnostic regressions on Linux before building and publishing the wheel. Branch builds leave existing releases unchanged.
 <!-- endstone-professional-header:end -->
 
 ---
 
 ## Project guide
+
+### Version 1.5.6: enchanted gear and spectator switching
+
+Night-vision cleanup now uses `effect <player> clear night_vision`, preserving other active potion effects when returning to survival or creative. The previous cleanup cleared every effect, including buffs supplied by enchanted armor or another plugin. See [the Bedrock effect command reference](https://learn.microsoft.com/en-us/minecraft/creator/commands/commands/effect?view=minecraft-bedrock-stable).
+
+Menu game-mode changes skip an already-selected mode and verify that a switch succeeded before applying its effects, logging success or continuing a spectator-dependent teleport.
+
+Read-only diagnostics record equipped armor and held/offhand items before and after a menu mode change: vanilla enchant names/raw IDs and levels, `endstone_custom_enchants` IDs/levels/revision, bounded lore and NBT key names. They observe nearby lead spawns during the setter and briefly afterwards, with follow-up samples at 5, 10 and 20 ticks. Post-switch observation stops after two seconds of wall-clock time or completion. All item drops and enchantments are preserved; proximity and ownership are diagnostic observations, not proof of the cause.
+
+Install the release wheel `endstone_mod_menu-1.5.6-py3-none-any.whl`, remove the older Mod Menu wheel and restart. Preserve the plugin data folder. The reported live lead-drop cause remains unconfirmed; this release fixes the effect-clearing conflict and supplies diagnostics for further investigation.
+
+If a lead still drops:
+
+1. Stand still and switch to spectator and back with enchanted armor removed and an empty hand/offhand. Keep the gear intact in inventory rather than stripping enchantments.
+2. Repeat with one enchanted piece equipped at a time, then the full set. Note which piece/set makes the drop appear.
+3. Compare with the ordinary `/gamemode` command; these diagnostics watch menu-triggered changes only.
+4. Inspect the server log for `[ModeSwitchDiagnostics]`. Preserve the relevant JSON entry and Endstone/BDS versions. It contains before/after equipment and nearby lead timing/ownership observations.
+
+The 37 automated regressions use the native Endstone 0.11.15 SDK with simulated server/player callbacks. They cover selective night-vision cleanup, item/tag inspection, item preservation, menus, delayed drops, shutdown and reconnects. They do not replace live server/client reproduction. After installing the package and Endstone, run `python -m unittest discover -s tests -v` from the source checkout. See [CHANGELOG.md](CHANGELOG.md) and [release notes](.github/release-notes/v1.5.6.md).
 
 A comprehensive moderator menu plugin for Endstone (Minecraft Bedrock Dedicated Server) that provides essential moderation tools through an intuitive UI.
 
@@ -142,6 +161,7 @@ endstone-mod-menu/
 ├── src/
 │   └── endstone_mod_menu/
 │       ├── __init__.py
+│       ├── gamemode_guard.py
 │       └── mod_menu.py
 ├── pyproject.toml
 └── README.md
@@ -151,11 +171,11 @@ endstone-mod-menu/
 
 Edit the constants in `mod_menu.py`:
 - `FILL_VOLUME_LIMIT` - Maximum blocks for fill command (default: 32768)
-- `NV_DURATION_TICKS` - Night vision duration in ticks (default: 999999)
+- `NV_DURATION_TICKS` - Night vision command duration in seconds (legacy constant name; default: 999999)
 - `NV_SHOW_PARTICLES` - Show particles for night vision effect (default: False)
 
 ## API Version
-This plugin targets Endstone API version 0.10
+This plugin targets Endstone API version 0.11.
 
 ## Commands
 
@@ -173,7 +193,7 @@ Handles commands through the standard Endstone command system.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Endstone 0.11.9+
 - Minecraft Bedrock Dedicated Server
 
